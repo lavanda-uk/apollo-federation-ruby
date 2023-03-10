@@ -7,7 +7,7 @@ require 'apollo-federation/federated_document_from_schema_definition.rb'
 
 module ApolloFederation
   module Schema
-    IMPORTED_DIRECTIVES = ['inaccessible', 'tag'].freeze
+    IMPORTED_DIRECTIVES = ['inaccessible', 'key', 'tag'].freeze
 
     def self.included(klass)
       klass.extend(CommonMethods)
@@ -52,6 +52,7 @@ module ApolloFederation
             super(@federation_query_object)
           end
 
+          @directives = added_federation_directives
           super
         end
       end
@@ -63,7 +64,7 @@ module ApolloFederation
 
         <<~SCHEMA
           extend schema
-            @link(url: "https://specs.apollo.dev/federation/v2.3"#{federation_namespace}, import: [#{(IMPORTED_DIRECTIVES.map { |directive| "\"@#{directive}\"" }).join(', ')}])
+            @link(url: "https://specs.apollo.dev/federation/v#{federation_version}"#{federation_namespace}, import: [#{(@directives.map { |directive| "\"@#{directive}\"" }).join(', ')}])
 
         SCHEMA
       end
@@ -82,6 +83,21 @@ module ApolloFederation
           !type.introspection? && type.include?(ApolloFederation::Object) &&
             type.federation_directives&.any? { |directive| directive[:name] == 'key' }
         end
+      end
+
+      def added_federation_directives
+        result = []
+        types_schema = Class.new(self)
+        types_schema.types.values.each do |type|
+          next unless !type.introspection? && type.include?(ApolloFederation::Object)
+
+          type&.federation_directives&.each do |directive|
+            result << directive[:name] if directive[:name] =='key'
+          end
+        end
+
+        compacted_result = result.compact
+        compacted_result.empty? ? IMPORTED_DIRECTIVES - ['key'] : compacted_result.compact.uniq
       end
 
       def federation_query(query_obj)
